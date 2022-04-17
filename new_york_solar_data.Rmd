@@ -1,0 +1,192 @@
+---
+title: "Visualizing the New York Solar Resource Data"
+author: "Abe Ceasar Perez"
+date: "April 9, 2022"
+output: html_document
+---
+
+### Extracting Data from Gov API
+
+This project aims to make use of APIs in order to obtain and visualize data using relevant plots. In this program, we will be using the Data Gov API in order to extract the Solar Resource Data specifically for New York City.
+
+In addition to the objectives above, we'll be applying the following concepts in this project:
+- API functions
+- Lists/vectors
+- Line plots
+
+To understand how the results were obtained, the process is outlined below:
+
+### Loading the packages
+
+Here are the packages used for this project and their usages:
+
+- tidyverse: for loading packages related to data cleaning/data visualization
+- httr: for reading/querying APIs/html data
+- jsonlite: for loading/transforming json text
+
+```{r load_packages, echo=TRUE, warning=FALSE}
+
+pacman::p_load("httr","jsonlite", "tidyverse") # loads all packages
+
+```
+
+### Storing the API credentials
+
+Since we'll be using the Data Gov API to extract the data, we'll be using an access key in order to grant permission on using the API. 
+
+We'll then store these credentials into a list and include the parameters of interest to extract the New York City data
+
+```{r store_api, echo=TRUE, warning=FALSE}
+
+parameters_list <- list(api_key = "ntILtTxhGNaIVhFh0Y4apdOIeRPAbSePLaxiUWRB",
+                        lat = 41, 
+                        lon = -75) # stores the coordinates of New York City
+
+parameters_list
+
+```
+
+### Extracting the Data
+
+After we have stored the credentials in a list, we'll now proceed with fetching the data using the url of Data Gov and the credentials from the parameters list.
+
+```{r fetch_data, echo=TRUE, warning=FALSE}
+
+url <- "https://developer.nrel.gov"
+endpoint <- "api/solar/solar_resource/v1.json"
+
+result <- GET(modify_url(url,path=endpoint), query = parameters_list) # combines the url and endpoint to be used for extracting the data
+
+result
+
+```
+
+To determine if the process is a success or not, we'll also be printing the status code of the extraction process. Since the status code is 200, our extraction is said to be a success.
+
+```{r status_extract, echo=TRUE, warning=FALSE}
+
+status <- status_code(result)
+status
+
+```
+
+We'll now convert the output of the result into a text format before storing it into a variable.
+
+```{r convert_text, echo=TRUE, warning=FALSE}
+
+output <- content(result, "text") # change output to text
+output
+
+```
+
+### Manipulating the Text Output
+
+Since the output we received is of a JSON text, we'll now be converting this output into an R object using the jsonlite package.
+
+```{r json_to_text, echo=TRUE, warning=FALSE}
+
+json_lists <- fromJSON(output) # change json output to proper format
+
+str(json_lists) # displays the structure of the converted object
+
+```
+
+Looking at the output, we can see that the final object is a complex list. Since we only needed the monthly data of the three variables (avg_dni, avg_ghi, and avg_lat_tilt), we'll be extracting these vectors using the "$" operators
+
+```{r text_to_vectors, echo=TRUE, warning=FALSE}
+
+# extract all lists with monthly data and convert to vectors through unlisting
+avg_dni <- unlist(json_lists$outputs$avg_dni$monthly) 
+avg_ghi <- unlist(json_lists$outputs$avg_ghi$monthly)
+avg_lat_tilt <- unlist(json_lists$outputs$avg_lat_tilt$monthly)
+
+months <- names(avg_dni) # associates the main variable of interest with the month of occurrence
+
+```
+
+Now that we have the vectors for each variable, we'll now store them into a dataframe to create a Solar Resource Data for New York City:
+
+```{r vectors_to_tibble, echo=TRUE, warning=FALSE}
+
+df <- tibble(months = months, 
+             avg_dni = avg_dni, 
+             avg_ghi = avg_ghi, 
+             avg_lat_tilt = avg_lat_tilt) # combines the average solar metrics alongside with their corresponding months
+df
+
+```
+
+### Encapsulating into a Function
+
+Since we were able to demonstrate the extraction and transformation of the data above, we can now store and summarize the processes into a single function below:
+
+```{r api_function, echo=TRUE, warning=FALSE}
+
+nrel_api_json_get_df <- function(endpoint, queries = parameters_list) {
+    
+    # Preparing the URL 
+    url <- modify_url("https://developer.nrel.gov", path = endpoint)
+    
+    # API requests
+    response <- GET(url, query = queries)
+    
+    # Tracking errors
+    if ( http_error(response) ){
+      print(status_code(response))
+      print(http_status(response))
+      stop("Something went wrong.", call. = FALSE)
+    }
+    
+    if (http_type(response) != "application/json") {
+      stop("API did not return json", call. = FALSE)
+    }
+    
+    # Extracting content
+    json_text <- content(response, "text")
+    
+    # Converting content into Dataframe
+    json_lists <- jsonlite::fromJSON(json_text)
+    
+    # Return the dataframe  
+    u_lists <- unlist(json_lists$outputs)
+    u_matrix <- matrix(u_lists, ncol=3)[-1,]
+    df <- cbind(months,as.data.frame(u_matrix))
+    colnames(df) <- c("months","avg_dni","avg_ghi","avg_lat_tilt")
+    df
+}
+
+solar_resource_df <- nrel_api_json_get_df("api/solar/solar_resource/v1.json")
+
+```
+
+### Visualizing the Monthly Average Direct Solar Irradiation
+
+Now that we have the data, we can now create line plots in order to measure the trend of avg_dni. We'll first create a plot which does not consider the order of the months below:
+
+```{r plot_unordered, echo=TRUE, warning=FALSE}
+
+solar_resource_df %>% 
+  ggplot(aes(x=months,y=avg_dni, group=1)) + # creates one line to connect all the data points
+  geom_line() + 
+  geom_point() + # overlays a point to each data to highlight in the plot
+  theme_bw()
+
+```
+
+Lastly, we'll create our final plot using the correct order of months. We'll be modifying the month columns first in our data set and use that to correctly plot the data.
+
+```{r plot_ordered, echo=TRUE, warning=FALSE}
+
+solar_resource_df <- solar_resource_df %>% 
+  mutate(months = factor(month.abb, levels = month.abb)) # converts the month data into ordered factors
+
+solar_resource_df %>% 
+  ggplot(aes(x=months,y=avg_dni, group=1)) + 
+  geom_line() + 
+  geom_point() + 
+  theme_bw() # plots the data with the ordered months
+
+```
+
+<br>
+<br>
