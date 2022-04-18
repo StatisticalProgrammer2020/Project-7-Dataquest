@@ -1,7 +1,6 @@
 ---
 title: "Visualizing the New York Solar Resource Data"
 author: "Abe Ceasar Perez"
-date: "April 9, 2022"
 output: html_document
 ---
 
@@ -9,7 +8,8 @@ output: html_document
 
 This project aims to make use of APIs in order to obtain and visualize data using relevant plots. In this program, we will be using the Data Gov API in order to extract the Solar Resource Data specifically for New York City.
 
-In addition to the objectives above, we'll be applying the following concepts in this project:
+For this project, the following concepts were applied in order to accomplish the objectives above:
+
 - API functions
 - Lists/vectors
 - Line plots
